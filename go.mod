@@ -1,4 +1,4 @@
-module go-amqp-reconnect
+module github.com/virushuo/go-amqp-reconnect
 
 go 1.15
 
