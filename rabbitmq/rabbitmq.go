@@ -1,11 +1,10 @@
 package rabbitmq
 
 import (
-	"time"
-
-	"sync/atomic"
-
+	"crypto/tls"
 	"github.com/streadway/amqp"
+	"sync/atomic"
+	"time"
 )
 
 const delay = 3 // reconnect after delay seconds
@@ -13,11 +12,11 @@ const delay = 3 // reconnect after delay seconds
 // Connection amqp.Connection wrapper
 type Connection struct {
 	*amqp.Connection
-    *Config
+	*Config
 }
 
 type Config struct {
-    Qos int
+	Qos int
 }
 
 // Channel wrap amqp.Connection.Channel, get a auto reconnect channel
@@ -28,9 +27,9 @@ func (c *Connection) Channel() (*Channel, error) {
 		return nil, err
 	}
 
-    if c.Config.Qos >0 {
-        ch.Qos(c.Config.Qos, 0, false)
-    }
+	if c.Config.Qos > 0 {
+		ch.Qos(c.Config.Qos, 0, false)
+	}
 
 	channel := &Channel{
 		Channel: ch,
@@ -54,9 +53,9 @@ func (c *Connection) Channel() (*Channel, error) {
 
 				ch, err := c.Connection.Channel()
 				if err == nil {
-                    if c.Config.Qos >0 {
-                        ch.Qos(c.Config.Qos, 0, false)
-                    }
+					if c.Config.Qos > 0 {
+						ch.Qos(c.Config.Qos, 0, false)
+					}
 					debug("channel recreate success")
 					channel.Channel = ch
 					break
@@ -71,16 +70,22 @@ func (c *Connection) Channel() (*Channel, error) {
 	return channel, nil
 }
 
-// Dial wrap amqp.Dial, dial and get a reconnect connection
-func Dial(url string, conf *Config) (*Connection, error) {
-	conn, err := amqp.Dial(url)
+// Dial wrap amqp.Dial / amqp.DialTLS, dial and get a reconnect connection
+func Dial(url string, conf *Config, tlsconf *tls.Config) (*Connection, error) {
+	var conn *amqp.Connection
+	var err error
+	if tlsconf == nil {
+		conn, err = amqp.Dial(url)
+	} else {
+		conn, err = amqp.DialTLS(url, tlsconf)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	connection := &Connection{
 		Connection: conn,
-        Config: conf,
+		Config:     conf,
 	}
 
 	go func() {
@@ -98,7 +103,13 @@ func Dial(url string, conf *Config) (*Connection, error) {
 				// wait 1s for reconnect
 				time.Sleep(delay * time.Second)
 
-				conn, err := amqp.Dial(url)
+				var conn *amqp.Connection
+				var err error
+				if tlsconf == nil {
+					conn, err = amqp.Dial(url)
+				} else {
+					conn, err = amqp.DialTLS(url, tlsconf)
+				}
 				if err == nil {
 					connection.Connection = conn
 					debugf("reconnect success")
